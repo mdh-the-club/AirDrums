@@ -1,0 +1,8 @@
+{
+    "board": "sandeepmistry:nRF5:Waveshare_BLE400",
+    "configuration": "chip=xxaa,softdevice=s130",
+    "programmer": "AVR ISP",
+    "port": "COM13",
+    "sketch": "AirDrumsNrf.ino",
+    "output": "../build/"
+}
