@@ -10,12 +10,12 @@ namespace AccelerometerVisualizer
 {
     public class NoteData
     {
-        public float X;
-        public float Y;
-        public float Z;
+        public float X { get; set; }
+        public float Y { get; set; }
+        public float Z { get; set; }
         //public int MidiInstrument;
         //public int MidiNote;
-        public GeneralMidiPercussion PercissionInst;
+        public GeneralMidiPercussion PercissionInst { get; set; }
 
         public NoteData(float x, float y, float z, GeneralMidiPercussion percInt)
         {

@@ -19,8 +19,6 @@ namespace AccelerometerVisualizer
         BindingList<DeviceInformation> deviceList = new BindingList<DeviceInformation>();
         DeviceWatcher deviceWatcher;
 
-        string RxString;
-
         public Form1()
         {
             InitializeComponent();
@@ -116,14 +114,15 @@ namespace AccelerometerVisualizer
             PlotData(x, y, z);
             
 
-            curX = x;
-            curY = y;
-            curZ = z;
+           
         }
+
+
+        bool playLock = false;
 
         void PlotData(float x, float y, float z)
         {
-            this.chart1.Invoke((MethodInvoker)delegate {
+            this.chart1.BeginInvoke((MethodInvoker)delegate {
                 chart1.Series["accX"].Points.AddY(x);
                 chart1.Series["accY"].Points.AddY(y);
                 chart1.Series["accZ"].Points.AddY(z);
@@ -135,6 +134,19 @@ namespace AccelerometerVisualizer
                     chart1.Series["accZ"].Points.RemoveAt(0);
 
                 }
+                curX = x;
+                curY = y;
+                curZ = z;
+
+                if (z > 15 && !playLock)
+                {
+                    GeneralMidiPercussion percussion = (GeneralMidiPercussion)Enum.Parse(typeof(GeneralMidiPercussion), comboBox2.SelectedItem.ToString(), true);
+                    MidiPlayer.Play(new NoteOn(0, percussion, 127));
+                    playLock = true;
+                }
+
+                if (z < 15 && playLock)
+                    playLock = false;
 
             });
         }
@@ -200,70 +212,27 @@ namespace AccelerometerVisualizer
 
         private void InitializeDataGridView()
         {
-            dataGridView1.DataSource = notes;
+            BindingSource bs = new BindingSource();
+            bs.DataSource = notes;
+            dataGridView1.DataSource = bs;
+            
         }
 
-        private void DisplayText(object sender, EventArgs e)
-        {
-           
-
-        }
-
-        string buffer = "";
-        
         private void serialPort1_DataReceived(object sender, System.IO.Ports.SerialDataReceivedEventArgs e)
         {
-            RxString = serialPort1.ReadExisting();
-            buffer += RxString;
+            string RxString = serialPort1.ReadLine();
 
-            string[] stringSeparators = new string[] { "\r\n" };
-            if (buffer.Contains("\r\n"))
-            {
-                Console.Write(buffer + " # ");
-
-                string[] lines = buffer.Split(stringSeparators, StringSplitOptions.None);
-                foreach (var line in lines)
-                {
-                    Console.WriteLine(line);
-                    var values = line.Split(new string[] { " " }, StringSplitOptions.RemoveEmptyEntries);
-                    if (values.Length != 3)
-                        continue;
-                    var doubles = values.Select(x => double.Parse(x, CultureInfo.InvariantCulture)).ToArray();
-
-                    if (doubles.Length == 3)
-                        PlotData((float)doubles[0], (float)doubles[1], (float)doubles[2]);
-                }
-
-                buffer = "";
-            }
-
-            /*RxString = serialPort1.ReadExisting();
-            if (!RxString.Contains("\r\n"))
-            {
-                buffer = buffer + RxString;
+            var values = RxString.Split(new string[] { " " }, StringSplitOptions.RemoveEmptyEntries);
+            if (values.Length != 3)
                 return;
-            }
-            if (buffer == "")
-                buffer = RxString;
-                
-            //textBox1.AppendText(RxString);
-            string[] stringSeparators = new string[] { "\r\n" };
-            var lastIndex = buffer.LastIndexOf("\r\n")+2;
-            
-            string[] lines = buffer.Substring(0, lastIndex).Split(stringSeparators, StringSplitOptions.None);
-            foreach (var line in lines)
+            var doubles = values.Select(x => double.Parse(x, CultureInfo.InvariantCulture)).ToArray();
+
+            if (doubles.Length == 3)
             {
-                Console.WriteLine(line);
-                var values = line.Split(new string[] { " " }, StringSplitOptions.RemoveEmptyEntries);
-                if (values.Length != 3)
-                    continue;
-                var doubles = values.Select(x => double.Parse(x, CultureInfo.InvariantCulture)).ToArray();
+                PlotData((float)doubles[0], (float)doubles[1], (float)doubles[2]);
 
-                if (doubles.Length == 3)
-                    PlotData((float)doubles[0], (float)doubles[1], (float)doubles[2]);
-
+               
             }
-            buffer = buffer.Substring(lastIndex);*/
         }
 
         private void button4_Click(object sender, EventArgs e)
@@ -274,6 +243,19 @@ namespace AccelerometerVisualizer
         private void comboBox3_SelectedIndexChanged(object sender, EventArgs e)
         {
 
+        }
+
+        private void Form1_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            if (serialPort1.IsOpen)
+            {
+                serialPort1.DataReceived -= serialPort1_DataReceived;
+                serialPort1.Close();
+                serialPort1.Dispose();
+                GC.Collect();
+                GC.Collect();
+            }
+            
         }
 
         private void button3_Click(object sender, EventArgs e)
@@ -289,7 +271,9 @@ namespace AccelerometerVisualizer
         {
             GeneralMidiPercussion percussion = (GeneralMidiPercussion)Enum.Parse(typeof(GeneralMidiPercussion), comboBox2.SelectedItem.ToString(), true);
             notes.Add(new NoteData(curX, curY, curZ, percussion));
-            dataGridView1.Refresh();
+            BindingSource bs = new BindingSource();
+            bs.DataSource = notes;
+            dataGridView1.DataSource = bs;
         }
     }
 }
