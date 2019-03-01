@@ -1,0 +1,1 @@
+To compile and run the Visualizer, add the "C:\Program Files (x86)\Windows Kits\10\UnionMetadata\10.0.17134.0\Windows.winmd" file as a reference to the project.
