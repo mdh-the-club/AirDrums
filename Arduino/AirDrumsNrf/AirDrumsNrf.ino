@@ -3,29 +3,11 @@
 
 // Import libraries (BLEPeripheral depends on SPI)
 #include <SPI.h>
-#include <Adafruit_LIS3DH.h>
-#include <Adafruit_Sensor.h>
 
-#include <BLEPeripheral.h>
+#include <MPU6050_tockn.h>
+#include <Wire.h>
 
-// Used for software SPI
-#define LIS3DH_CLK 7
-#define LIS3DH_MISO 4
-#define LIS3DH_MOSI 6
-// Used for hardware & software SPI
-#define LIS3DH_CS 3
-
-// software SPI
-Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS, LIS3DH_MOSI, LIS3DH_MISO, LIS3DH_CLK);
-// hardware SPI
-//Adafruit_LIS3DH lis = Adafruit_LIS3DH(LIS3DH_CS);
-// I2C
-//Adafruit_LIS3DH lis = Adafruit_LIS3DH();
-
-// Adjust this number for the sensitivity of the 'click' force
-// this strongly depend on the range! for 16G, try 5-10
-// for 8G, try 10-20. for 4G try 20-40. for 2G try 40-80
-#define CLICKTHRESHHOLD 80
+MPU6050 mpu6050(Wire);
 
 #include <BLEPeripheral.h>
 
@@ -52,9 +34,13 @@ typedef struct MIDIPacket
 
 typedef struct AccelerometerData
 {
-  float x;
-  float y;
-  float z;
+  uint16_t ax;
+  uint16_t ay;
+  uint16_t az;
+
+  uint16_t gx;
+  uint16_t gy;
+  uint16_t gz;
 };
 
 // create one or more services
@@ -118,46 +104,70 @@ void setup()
   // begin initialization
   blePeripheral.begin();
 
-  if (!lis.begin(0x19))
-  { // change this to 0x19 for alternative i2c address
-    Serial.println("Couldnt start");
-    while (1)
-      ;
-  }
-
-  lis.setRange(LIS3DH_RANGE_2_G); // 2, 4, 8 or 16 G!
-
-  Serial.print("Range = ");
-  Serial.print(2 << lis.getRange());
-  Serial.println("G");
-
-  // 0 = turn off click detection & interrupt
-  // 1 = single click only interrupt output
-  // 2 = double click only interrupt output, detect single click
-  // Adjust threshhold, higher numbers are less sensitive
-  lis.setClick(1, CLICKTHRESHHOLD);
-  delay(500);
+  Wire.begin();
+  mpu6050.begin();
+  mpu6050.calcGyroOffsets(true);
 }
+
+long timer = 0;
 
 void loop()
 {
   // poll peripheral
   blePeripheral.poll();
-  /* Or....get a new sensor event, normalized */
-  sensors_event_t event;
-  lis.getEvent(&event);
+  mpu6050.update();
 
-  /* Display the results (acceleration is measured in m5/s^2) */
-  Serial.print(event.acceleration.x);
-  Serial.print(" ");
-  Serial.print(event.acceleration.y);
-  Serial.print(" ");
-  Serial.print(event.acceleration.z);
-  Serial.println();
+  if (millis() - timer > 1000)
+  {
 
-  AccelerometerData ad = {event.acceleration.x,
-                          event.acceleration.y,
-                          event.acceleration.z};
+    Serial.println("=======================================================");
+    Serial.print("temp : ");
+    Serial.println(mpu6050.getTemp());
+    Serial.print("accX : ");
+    Serial.print(mpu6050.getAccX());
+    Serial.print("\taccY : ");
+    Serial.print(mpu6050.getAccY());
+    Serial.print("\taccZ : ");
+    Serial.println(mpu6050.getAccZ());
+
+    Serial.print("gyroX : ");
+    Serial.print(mpu6050.getGyroX());
+    Serial.print("\tgyroY : ");
+    Serial.print(mpu6050.getGyroY());
+    Serial.print("\tgyroZ : ");
+    Serial.println(mpu6050.getGyroZ());
+
+    Serial.print("accAngleX : ");
+    Serial.print(mpu6050.getAccAngleX());
+    Serial.print("\taccAngleY : ");
+    Serial.println(mpu6050.getAccAngleY());
+
+    Serial.print("gyroAngleX : ");
+    Serial.print(mpu6050.getGyroAngleX());
+    Serial.print("\tgyroAngleY : ");
+    Serial.print(mpu6050.getGyroAngleY());
+    Serial.print("\tgyroAngleZ : ");
+    Serial.println(mpu6050.getGyroAngleZ());
+
+    Serial.print("angleX : ");
+    Serial.print(mpu6050.getAngleX());
+    Serial.print("\tangleY : ");
+    Serial.print(mpu6050.getAngleY());
+    Serial.print("\tangleZ : ");
+    Serial.println(mpu6050.getAngleZ());
+    Serial.println("=======================================================\n");
+    timer = millis();
+  }
+
+  AccelerometerData ad = {
+      mpu6050.getRawAccX(),
+      mpu6050.getRawAccY(),
+      mpu6050.getRawAccZ(),
+
+      mpu6050.getRawGyroX(),
+      mpu6050.getRawGyroY(),
+      mpu6050.getRawGyroZ(),
+  };
 
   if (deviceConnected)
   {

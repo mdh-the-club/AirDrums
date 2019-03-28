@@ -11,6 +11,8 @@ using Windows.Storage.Streams;
 
 using Toub.Sound.Midi;
 using System.Globalization;
+using System.IO;
+using System.Runtime.Serialization.Formatters.Binary;
 
 namespace AccelerometerVisualizer
 {
@@ -19,14 +21,19 @@ namespace AccelerometerVisualizer
         BindingList<DeviceInformation> deviceList = new BindingList<DeviceInformation>();
         DeviceWatcher deviceWatcher;
 
+        bool isRecording = false;
+        List<SensorData> sensorData = new List<SensorData>();
+
         public Form1()
         {
             InitializeComponent();
 
-            Scan1();
+           
             InitializeMidiInstrumentsCombo();
             InitializeDataGridView();
             MidiPlayer.OpenMidi();
+
+            Scan1();
         }
 
         private void button1_Click(object sender, EventArgs e)
@@ -34,6 +41,10 @@ namespace AccelerometerVisualizer
             chart1.Series["accX"].Points.Clear();
             chart1.Series["accY"].Points.Clear();
             chart1.Series["accZ"].Points.Clear();
+
+            chart1.Series["gyroX"].Points.Clear();
+            chart1.Series["gyroY"].Points.Clear();
+            chart1.Series["gyroZ"].Points.Clear();
 
 
             ConnectDevice(comboBox1.SelectedValue as DeviceInformation);
@@ -106,12 +117,18 @@ namespace AccelerometerVisualizer
             // An Indicate or Notify reported that the value has changed.
             var reader = DataReader.FromBuffer(args.CharacteristicValue);
             reader.ByteOrder = ByteOrder.LittleEndian;
-            float x = reader.ReadSingle();
-            float y = reader.ReadSingle();
-            float z = reader.ReadSingle();
+            float ax = reader.ReadInt16() / 16384.0f;
+            float ay = reader.ReadInt16() / 16384.0f;
+            float az = reader.ReadInt16() / 16384.0f;
+
+            float gx = reader.ReadInt16() / 65.5f;
+            float gy = reader.ReadInt16() / 65.5f;
+            float gz = reader.ReadInt16() / 65.5f;
 
 
-            PlotData(x, y, z);
+            float m = (float)Math.Sqrt(ax * ax + ay * ay + az * az);
+
+            PlotData(ax, ay, az, gz, gy, gz, m);
             
 
            
@@ -120,12 +137,23 @@ namespace AccelerometerVisualizer
 
         bool playLock = false;
 
-        void PlotData(float x, float y, float z)
+        void PlotData(float ax, float ay, float az, float gx, float gy, float gz, float m)
         {
             this.chart1.BeginInvoke((MethodInvoker)delegate {
-                chart1.Series["accX"].Points.AddY(x);
-                chart1.Series["accY"].Points.AddY(y);
-                chart1.Series["accZ"].Points.AddY(z);
+
+
+                sensorData.Add(new SensorData(ax, ay, az, gx, gy, gz));
+
+                chart1.Series["accX"].Points.AddY(ax );
+                chart1.Series["accY"].Points.AddY(ay);
+                chart1.Series["accZ"].Points.AddY(az);
+
+                chart1.Series["mag"].Points.AddY(m);
+
+
+                chart1.Series["gyroX"].Points.AddY(gx);
+                chart1.Series["gyroY"].Points.AddY(gy);
+                chart1.Series["gyroZ"].Points.AddY(gz);
 
                 if (chart1.Series["accX"].Points.Count > 200)
                 {
@@ -133,19 +161,25 @@ namespace AccelerometerVisualizer
                     chart1.Series["accY"].Points.RemoveAt(0);
                     chart1.Series["accZ"].Points.RemoveAt(0);
 
-                }
-                curX = x;
-                curY = y;
-                curZ = z;
+                    chart1.Series["mag"].Points.RemoveAt(0);
 
-                if (z > 15 && !playLock)
+                    chart1.Series["gyroX"].Points.RemoveAt(0);
+                    chart1.Series["gyroY"].Points.RemoveAt(0);
+                    chart1.Series["gyroZ"].Points.RemoveAt(0);
+
+                }
+                curX = ax;
+                curY = ay;
+                curZ = az;
+
+                if (az > 200 && !playLock)
                 {
                     GeneralMidiPercussion percussion = (GeneralMidiPercussion)Enum.Parse(typeof(GeneralMidiPercussion), comboBox2.SelectedItem.ToString(), true);
                     MidiPlayer.Play(new NoteOn(0, percussion, 127));
                     playLock = true;
                 }
 
-                if (z < 15 && playLock)
+                if (az < 200 && playLock)
                     playLock = false;
 
             });
@@ -229,7 +263,7 @@ namespace AccelerometerVisualizer
 
             if (doubles.Length == 3)
             {
-                PlotData((float)doubles[0], (float)doubles[1], (float)doubles[2]);
+               // PlotData((float)doubles[0], (float)doubles[1], (float)doubles[2]);
 
                
             }
@@ -258,10 +292,74 @@ namespace AccelerometerVisualizer
             
         }
 
+        private void button5_Click(object sender, EventArgs e)
+        {
+            isRecording = !isRecording;
+            if (isRecording)
+            {
+                sensorData = new List<SensorData>();
+                button5.Text = "S T O P";
+            }
+            else
+            {
+                button5.Text = "R E C";
+            }
+        }
+
+        private void saveDatasetToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                using (Stream stream = File.Open(".\\test.bin", FileMode.Create))
+                {
+                    BinaryFormatter bin = new BinaryFormatter();
+                    bin.Serialize(stream, notes);
+                }
+            }
+            catch (IOException)
+            {
+            }
+        }
+
+        private void openDatasetToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                using (Stream stream = File.Open(".\\test.bin", FileMode.Open))
+                {
+                    BinaryFormatter bin = new BinaryFormatter();
+                    notes = bin.Deserialize(stream) as List<NoteData>;
+                }
+            }
+            catch (IOException)
+            {
+            }
+
+            Console.WriteLine(string.Format("{0}, {1}, {2}", notes[0].Corr(notes[1]), notes[0].Corr(notes[2]), notes[0].Corr(notes[0])));
+        }
+
+        private void exportToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            int sampleNo = 0;
+            foreach (var sample in notes)
+            {
+                // This text is always added, making the file longer over time
+                // if it is not deleted.
+                using (StreamWriter sw = File.AppendText(String.Format(".\\export{0}.cvs", sampleNo++)))
+                {
+
+                    foreach (SensorData s in sample.SensorData)
+                    {
+                        sw.WriteLine("{0},{1},{2},{3},{4},{5}", s.Ax, s.Ay, s.Az, s.Gx, s.Gy, s.Gz);
+                    }
+                }
+            }
+        }
+
         private void button3_Click(object sender, EventArgs e)
         {
             GeneralMidiPercussion percussion = (GeneralMidiPercussion)Enum.Parse(typeof(GeneralMidiPercussion), comboBox2.SelectedItem.ToString(), true);
-            MidiPlayer.Play(new NoteOn(0, percussion, 64));
+            MidiPlayer.Play(new NoteOn(0, percussion, 127));
 
         }
 
@@ -270,7 +368,7 @@ namespace AccelerometerVisualizer
         private void button2_Click(object sender, EventArgs e)
         {
             GeneralMidiPercussion percussion = (GeneralMidiPercussion)Enum.Parse(typeof(GeneralMidiPercussion), comboBox2.SelectedItem.ToString(), true);
-            notes.Add(new NoteData(curX, curY, curZ, percussion));
+            notes.Add(new NoteData(sensorData, percussion, 0));
             BindingSource bs = new BindingSource();
             bs.DataSource = notes;
             dataGridView1.DataSource = bs;
