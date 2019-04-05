@@ -121,6 +121,10 @@ namespace AccelerometerVisualizer
                     BinaryFormatter bin = new BinaryFormatter();
                     notes = bin.Deserialize(stream) as List<NoteData>;
                     btnAirDrum.Enabled = areSamplesLoaded = true;
+
+                    NotesForm notesForm = new NotesForm();
+                    notesForm.Show();
+                    notesForm.SetNotes(notes);
                 }
             }
             catch (IOException)
